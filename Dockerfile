@@ -1,25 +1,24 @@
-# Multi-stage build for smaller image
-FROM python:3.12-slim AS builder
-
-WORKDIR /app
-COPY pyproject.toml README.md LICENSE ./
-COPY paper_search_mcp/ paper_search_mcp/
-
-RUN pip install --no-cache-dir build \
-    && python -m build --wheel \
-    && pip install --no-cache-dir dist/*.whl
-
 FROM python:3.12-slim
 
 WORKDIR /app
-COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
-COPY --from=builder /usr/local/bin/paper-search-mcp /usr/local/bin/paper-search-mcp
 
-# Railway injects PORT at runtime; default here is for local Docker runs.
+# Install uv so we can use the lock file for reproducible builds.
+# This ensures Railway gets the exact same package versions as local dev.
+RUN pip install --no-cache-dir uv
+
+# Copy dependency files first so Docker can cache this layer.
+COPY pyproject.toml uv.lock README.md LICENSE ./
+COPY paper_search_mcp/ paper_search_mcp/
+
+# --frozen: fail if lock file is out of date (never silently upgrade)
+# --no-dev: skip development dependencies (tests, linters, etc.)
+RUN uv sync --frozen --no-dev
+
+# Railway injects PORT at runtime; 8000 is the fallback for local docker runs.
 ENV PORT=8000
 EXPOSE 8000
 
-# Environment variables (override at runtime with -e)
+# Academic source API keys — override at runtime via Railway environment variables.
 ENV PAPER_SEARCH_MCP_UNPAYWALL_EMAIL=""
 ENV PAPER_SEARCH_MCP_CORE_API_KEY=""
 ENV PAPER_SEARCH_MCP_SEMANTIC_SCHOLAR_API_KEY=""
@@ -29,5 +28,5 @@ ENV PAPER_SEARCH_MCP_GOOGLE_SCHOLAR_PROXY_URL=""
 ENV PAPER_SEARCH_MCP_IEEE_API_KEY=""
 ENV PAPER_SEARCH_MCP_ACM_API_KEY=""
 
-# Use the entry point script
-CMD ["paper-search-mcp"]
+# uv run resolves the entry point from the lock file's virtual environment.
+CMD ["uv", "run", "paper-search-mcp"]
