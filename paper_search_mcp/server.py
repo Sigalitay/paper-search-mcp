@@ -1380,9 +1380,14 @@ if acm_searcher is not None:
 
 
 def main():
+    import uvicorn
     # Railway injects PORT automatically; fall back to 8000 for local runs.
     port = int(os.environ.get("PORT", 8000))
-    mcp.run(transport="streamable-http", host="0.0.0.0", port=port)
+    # mcp.run(transport="streamable-http") defaults to 127.0.0.1 which Railway
+    # can't reach. Instead we grab the ASGI app and run uvicorn ourselves so we
+    # can bind to 0.0.0.0. The MCP endpoint is served at /mcp.
+    app = mcp.streamable_http_app()
+    uvicorn.run(app, host="0.0.0.0", port=port)
 
 
 if __name__ == "__main__":
